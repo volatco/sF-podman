@@ -52,13 +52,19 @@ heal_runtime_tty_mapping() {
     return
   fi
 
-  if sudo ln -sfn "$target_tty" "$RUNTIME_DEV" 2>/dev/null; then
-    echo "Runtime mapping healed with sudo: $RUNTIME_DEV -> $target_tty"
-    return
+  if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    if sudo ln -sfn "$target_tty" "$RUNTIME_DEV" 2>/dev/null; then
+      echo "Runtime mapping healed with sudo: $RUNTIME_DEV -> $target_tty"
+      return
+    fi
+  else
+    echo "Runtime mapping note: privileged remap unavailable (sudo missing or non-interactive denied)."
   fi
 
   echo "Runtime mapping warning: could not map $RUNTIME_DEV -> $target_tty automatically."
-  echo "Try: sudo ln -sfn $target_tty $RUNTIME_DEV"
+  if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    echo "Try: sudo ln -sfn $target_tty $RUNTIME_DEV"
+  fi
 }
 
 heal_runtime_tty_mapping
@@ -142,6 +148,16 @@ if compgen -G "/dev/ttyUSB*" > /dev/null; then
   fi
 fi
 
+# Legacy media typically expects ttyUSB1. Keep 1 PORT as default unless explicitly overridden.
+if [[ -z "${VOLATCO_PORT_IDX:-}" && "$RUNTIME_TTY" == "ttyUSB1" ]]; then
+  PREFERRED_PORT_CMD="1 PORT"
+  if [[ -e /dev/ttyUSB1 ]]; then
+    DETECTION_REASON="legacy runtime expects /dev/ttyUSB1"
+  else
+    DETECTION_REASON="legacy runtime expects /dev/ttyUSB1 (mapping missing)"
+  fi
+fi
+
 cat <<EOF
 Volatco connection guide (inside saneForth):
 
@@ -152,7 +168,7 @@ Volatco connection guide (inside saneForth):
    &INCLUDE ../Projects/VOLATCO/custom.txt
    DISKS
 4. SERIAL LOAD
-5. ${PREFERRED_PORT_CMD}      (Port_B rigs usually use 1 PORT)
+5. ${PREFERRED_PORT_CMD}
    - expected: "Using port /dev/ttyUSBx ok"
 6. PLUG
    - expected: "ok"
@@ -169,6 +185,11 @@ EOF
 
 echo "Autodetected runtime port: ${PREFERRED_PORT_CMD} (${DETECTION_REASON})"
 echo "Legacy runtime device expected by media: ${RUNTIME_DEV}"
+if [[ ! -e "$RUNTIME_DEV" ]]; then
+  echo "WARNING: expected runtime device $RUNTIME_DEV is missing."
+  echo "         Native: create mapping to your adapter path (usually /dev/ttyUSB0)."
+  echo "         Podman: restart pod via 'make podman-pod-up' to auto-map ttyUSB1."
+fi
 
 if [[ -n "$TTY_LIST" ]]; then
   echo "Detected serial device(s): $TTY_LIST"

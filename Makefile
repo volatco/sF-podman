@@ -66,6 +66,10 @@ podman-pod-up:
 			SEEN_DEVS="$$SEEN_DEVS$$dev "; \
 		fi; \
 	done; \
+	if [ -e /dev/ttyUSB0 ] && [ ! -e /dev/ttyUSB1 ]; then \
+		DEV_ARGS="$$DEV_ARGS --device /dev/ttyUSB0:/dev/ttyUSB1"; \
+		echo "info: mapping host /dev/ttyUSB0 as container /dev/ttyUSB1 for legacy runtime"; \
+	fi; \
 	if [ -z "$$DEV_ARGS" ]; then \
 		echo "warning: no ttyUSB devices found; starting pod container without ttyUSB mapping"; \
 	fi; \
