@@ -9,6 +9,7 @@ BY_ID_LIST=""
 tty_idx=""
 RUNTIME_TTY="${VOLATCO_RUNTIME_TTY:-ttyUSB1}"
 RUNTIME_DEV="/dev/${RUNTIME_TTY}"
+VOLATCO_BAUD="${VOLATCO_BAUD:-921600}"
 
 resolve_volatco_tty_path() {
   if [[ -e /dev/volatco-port-b ]]; then
@@ -65,6 +66,44 @@ heal_runtime_tty_mapping() {
   if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
     echo "Try: sudo ln -sfn $target_tty $RUNTIME_DEV"
   fi
+}
+
+configure_serial_device() {
+  local dev_path="$1"
+  local label="$2"
+
+  if [[ ! -e "$dev_path" ]]; then
+    return
+  fi
+
+  if stty -F "$dev_path" "${VOLATCO_BAUD}" raw -echo -ixon -ixoff -crtscts 2>/dev/null; then
+    echo "Serial line prepared ($label): $dev_path @ ${VOLATCO_BAUD} raw"
+    return
+  fi
+
+  echo "Serial prep warning ($label): could not apply stty settings on $dev_path"
+}
+
+prepare_serial_line() {
+  local target_tty=""
+  local target_tty_idx=""
+
+  if ! command -v stty >/dev/null 2>&1; then
+    echo "Serial prep note: stty not available; skipping serial line configuration."
+    return
+  fi
+
+  target_tty="$(resolve_volatco_tty_path)"
+  if [[ -n "${target_tty:-}" ]]; then
+    configure_serial_device "$target_tty" "volatco target"
+  fi
+
+  if [[ "$PREFERRED_PORT_CMD" =~ ^([0-9]+)\ PORT$ ]]; then
+    target_tty_idx="${BASH_REMATCH[1]}"
+    configure_serial_device "/dev/ttyUSB${target_tty_idx}" "preferred PORT device"
+  fi
+
+  configure_serial_device "$RUNTIME_DEV" "legacy runtime device"
 }
 
 heal_runtime_tty_mapping
@@ -203,6 +242,8 @@ if [[ -n "$BY_ID_LIST" ]]; then
   echo "Stable serial path(s) from /dev/serial/by-id:"
   echo "$BY_ID_LIST"
 fi
+
+prepare_serial_line
 
 echo
 echo "Starting saneForth..."

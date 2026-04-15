@@ -56,7 +56,21 @@ podman-pod-build:
 		-t $(PODMAN_POD_IMAGE) .
 
 podman-pod-up:
-	@HOST_REPO_ROOT="$$(git rev-parse --show-toplevel 2>/dev/null || pwd)"; \
+	@echo "Preflight (host serial):"; \
+	if compgen -G "/dev/ttyUSB*" > /dev/null; then \
+		ls -l /dev/ttyUSB*; \
+	else \
+		echo "warning: no /dev/ttyUSB* found on host"; \
+	fi; \
+	if compgen -G "/dev/serial/by-id/*VOLATCO*" > /dev/null; then \
+		ls -l /dev/serial/by-id/*VOLATCO*; \
+	else \
+		echo "warning: no /dev/serial/by-id/*VOLATCO* entry found"; \
+	fi; \
+	if command -v stty >/dev/null 2>&1 && [ -e /dev/ttyUSB1 ]; then \
+		stty -F /dev/ttyUSB1 -a | head -n 1; \
+	fi; \
+	HOST_REPO_ROOT="$$(git rev-parse --show-toplevel 2>/dev/null || pwd)"; \
 	DEV_ARGS=""; \
 	SEEN_DEVS=" "; \
 	BYID_ARG=""; \
@@ -91,7 +105,10 @@ podman-pod-up:
 			-v "$$HOST_REPO_ROOT":/workspace:Z \
 			-w /workspace \
 			$(PODMAN_POD_IMAGE); \
-	fi
+	fi; \
+	echo; \
+	echo "Preflight (container serial):"; \
+	podman exec $(PODMAN_POD_CONTAINER) sh -lc 'ls -l /dev/ttyUSB* 2>/dev/null || echo "warning: no /dev/ttyUSB* in container"; ls -l /dev/serial/by-id/*VOLATCO* 2>/dev/null || echo "warning: no VOLATCO by-id in container"' || true
 
 podman-pod-shell:
 	podman exec -it -w /workspace $(PODMAN_POD_CONTAINER) /workspace/scripts/run-sf.sh
@@ -108,3 +125,5 @@ podman-pod-connect:
 podman-pod-down:
 	-podman rm -f $(PODMAN_POD_CONTAINER)
 	-podman pod rm -f $(PODMAN_POD_NAME)
+	@echo "Pod/container stopped. Host serial now:"; \
+	ls -l /dev/ttyUSB* 2>/dev/null || echo "no /dev/ttyUSB* found"
